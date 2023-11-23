@@ -104,7 +104,7 @@ class TrainTest:
      self.model.load_state_dict(torch.load(path))
 
   # Training function. We simply have to loop over our data iterator and feed the inputs to the network and optimize.
-  def train(self, optimizer, num_epochs, path_model, verbatim=True):
+  def train(self, optimizer, num_epochs, path_model, scheduler=None, verbatim=True):
     self.model.train()
     self.model.to(self.device)
 
@@ -119,9 +119,12 @@ class TrainTest:
     for epoch in range(num_epochs):  # loop over the dataset multiple times
       train_loss = 0
       train_acc = 0
-      for i, (images, labels) in enumerate(self.train_dataloader, 0):
-        self.model.train()
 
+      if scheduler:
+        scheduler.step()
+
+      self.model.train()
+      for i, (images, labels) in enumerate(self.train_dataloader, 0):
         # 0. Get the inputs
         data_inputs = images.to(self.device)
         data_labels = labels.to(self.device)
@@ -142,20 +145,14 @@ class TrainTest:
         optimizer.zero_grad()
 
         # 4. Loss backward
-        loss.backward(create_graph=True)
+        loss.backward() #(create_graph=True)
 
         # 5. Optimizer step
         optimizer.step()
 
       # Calculate and accumulate accuracy metric across all batches
       with torch.no_grad():
-        self.model.eval()
-        x_val, y_val = self.val_data
-        y_val_pred = self.model(x_val.to(self.device))
-        val_labels_one_hot = nn.functional.one_hot(y_val.to(torch.int64), num_classes=self.solar_dataset.num_classes).to(self.device)
-        val_loss = self.loss_fn(y_val_pred, val_labels_one_hot.to(torch.float32)).item()
-        y_val_pred_class = torch.argmax(torch.softmax(y_val_pred, dim=1), dim=1)
-        val_acc = (y_val_pred_class == y_val.to(self.device)).sum().item() / len(y_val_pred_class)
+        _, val_loss, val_acc = self.test()
 
       # Adjust metrics to get average loss and accuracy per batch
       train_acc = train_acc / len(self.train_dataloader)
@@ -179,14 +176,14 @@ class TrainTest:
     # Plot the loss and accuracy curves
     fig, axs = plt.subplots(1, 2, figsize=(12, 5))
 
-    axs[0].plot(range(1, num_epochs + 1), train_losses, color='b', label="Training Loss")
-    axs[0].plot(range(1, num_epochs + 1), val_losses, color='r', label="Validation Loss")
+    axs[0].plot(range(1, num_epochs + 1), train_losses, color='orange', label="Training Loss")
+    axs[0].plot(range(1, num_epochs + 1), val_losses, color='c', label="Validation Loss")
     axs[0].set_xlabel('Epochs')
     axs[0].set_ylabel('Loss')
     axs[0].legend()
 
-    axs[1].plot(range(1, num_epochs + 1), train_accs, color='b', label="Training Accuracy")
-    axs[1].plot(range(1, num_epochs + 1), val_accs, color='r', label="Validation Accuracy")
+    axs[1].plot(range(1, num_epochs + 1), train_accs, color='orange', label="Training Accuracy")
+    axs[1].plot(range(1, num_epochs + 1), val_accs, color='c', label="Validation Accuracy")
     axs[1].set_xlabel('Epochs')
     axs[1].set_ylabel('Accuracy')
     axs[1].legend()
